@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sudoku Visual Solver - Graph Coloring Demo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+        }
+        
+        .sudoku-container {
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+        
+        .sudoku-grid {
+            display: grid;
+            grid-template-columns: repeat(9, 1fr);
+            grid-template-rows: repeat(9, 1fr);
+            gap: 2px;
+            background-color: #000;
+            border: 4px solid #000;
+            border-radius: 10px;
+            padding: 4px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+        }
+        
+        .sudoku-cell {
+            aspect-ratio: 1;
+            border: 1px solid #ddd;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            background-color: white;
+            transition: all 0.3s ease;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            min-width: 40px;
+            min-height: 40px;
+        }
+        
+        .sudoku-cell input {
+            width: 100%;
+            height: 100%;
+            border: none;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            background: transparent;
+            outline: none;
+            -moz-appearance: textfield;
+        }
+        
+        .sudoku-cell input::-webkit-outer-spin-button,
+        .sudoku-cell input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        
+        .sudoku-cell.given {
+            background-color: #e3f2fd;
+            color: #1976d2;
+            font-weight: 900;
+        }
+        
+        .sudoku-cell.color-1 { background-color: #FFB6C1; color: black; }
+        .sudoku-cell.color-2 { background-color: #FF0000; color: black; }
+        .sudoku-cell.color-3 { background-color: #00FF00; color: black; }
+        .sudoku-cell.color-4 { background-color: #0000FF; color: black; }
+        .sudoku-cell.color-5 { background-color: #FFA500; color: black; }
+        .sudoku-cell.color-6 { background-color: #FFFF00; color: black; }
+        .sudoku-cell.color-7 { background-color: #800080; color: black; }
+        .sudoku-cell.color-8 { background-color: #808080; color: black; }
+        .sudoku-cell.color-9 { background-color: #00FFFF; color: black; }
+        
+        .graph-mode .sudoku-cell {
+            border-radius: 50%;
+            border: 2px solid #000000;
+            width: 40px;
+            height: 40px;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            z-index: 10;
+        }
+        
+        .graph-mode .sudoku-grid {
+            gap: 20px;
+            padding: 4px;
+            background-color: transparent;
+            position: relative;
+            border: none;
+            width: 100%;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .graph-edges {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 5;
+        }
+        
+        .constraint-line {
+            stroke: #000000;
+            stroke-width: 1px;
+            opacity: 0.6;
+        }
+        
+        .sudoku-cell.current {
+            background-color: #fff3cd;
+            border: 3px solid #ff9800;
+            animation: pulse 1.5s infinite;
+            z-index: 10;
+        }
+        
+        .sudoku-cell.solved {
+            background-color: #e8f5e8;
+            color: #2e7d32;
+            animation: fadeIn 0.8s ease;
+        }
+        
+        .sudoku-cell.conflict {
+            background-color: #ffebee;
+            color: #c62828;
+            border: 2px solid #f44336;
+            animation: shake 0.6s ease;
+        }
+        
+        .sudoku-cell.affected {
+            background-color: #fff8e1;
+            border: 2px solid #ffc107;
+        }
+        
+        .sudoku-cell.possible {
+            background-color: #e1f5fe;
+            border: 2px solid #03a9f4;
+        }
+        
+        /* Tạo border dày cho các ô 3x3 */
+        .sudoku-cell:nth-child(3n):not(:nth-child(9n)) {
+            border-right: 3px solid #000;
+        }
+        
+        .sudoku-cell:nth-child(n+19):nth-child(-n+27),
+        .sudoku-cell:nth-child(n+46):nth-child(-n+54) {
+            border-bottom: 3px solid #000;
+        }
+        
+        .possibilities {
+            position: absolute;
+            top: 2px;
+            left: 3px;
+            font-size: 7px;
+            color: #666;
+            line-height: 1;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1px;
+            width: calc(100% - 6px);
+        }
+        
+        .poss-num {
+            background: rgba(33, 150, 243, 0.1);
+            border-radius: 2px;
+            font-size: 6px;
+            text-align: center;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 152, 0, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 152, 0, 0); }
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0.3; transform: scale(0.8); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-3px); }
+            20%, 40%, 60%, 80% { transform: translateX(3px); }
+        }
+        
+        .step-controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            margin: 20px 0;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        
+        .step-info {
+            background: rgba(255, 255, 255, 0.9);
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 10px;
+            padding: 20px;
+            margin: 15px 0;
+            min-height: 120px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .progress-bar-custom {
+            height: 30px;
+            border-radius: 15px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .algorithm-explanation {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin: 20px 0;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        
+        .stat-card {
+            background: rgba(255,255,255,0.2);
+            border-radius: 10px;
+            padding: 15px;
+            text-align: center;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        
+        .stat-number {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #fff;
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+        }
+        
+        .loading-content {
+            background: white;
+            padding: 40px;
+            border-radius: 15px;
+            text-align: center;
+            box-shadow: 0 10px 50px rgba(0,0,0,0.3);
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid #f3f3f3;
+            border-top: 5px solid #007bff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .hidden { display: none; }
+        
+        .btn-step {
+            min-width: 130px;
+            margin: 3px;
+        }
+        
+        .color-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(255,255,255,0.9);
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+        
+        .color-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        
+        .color-box {
+            width: 24px;
+            height: 24px;
+            border: 2px solid #ccc;
+            border-radius: 5px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.95);
+        }
+        
+        .card-header {
+            border-radius: 15px 15px 0 0 !important;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+        }
+        
+        .step-description {
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        
+        .step-details {
+            background: rgba(0,123,255,0.1);
+            border-left: 4px solid #007bff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        
+        .btn-group .btn {
+            border-radius: 8px;
+            margin: 0 2px;
+        }
+        
+        .algorithm-steps {
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        
+        .step-indicator {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            background: #28a745;
+            color: white;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            font-weight: bold;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-3">
+        <!-- Header -->
+        <div class="text-center mb-4">
+            <h1><i class="fas fa-puzzle-piece text-primary"></i> Sudoku Graph Coloring Solver</h1>
+            <p class="lead">Demo thuật toán Graph Coloring giải Sudoku với visualization từng bước</p>
+        </div>
+        
+        <!-- Algorithm Explanation -->
+        <div class="algorithm-explanation">
+            <div class="text-center mb-3">
+                <h4><i class="fas fa-brain"></i> Thuật toán Welsh-Powell cho bài toán Graph Coloring</h4>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-4">
+                    <h6><i class="fas fa-info-circle"></i> Mô hình Graph Coloring</h6>
+                    <div class="algorithm-steps">
+                        <div><strong>Đỉnh:</strong> 81 ô | <strong>Cạnh:</strong> Ràng buộc | <strong>Màu:</strong> Số 1-9</div>
+                    </div>
+                </div>
+                
+                <div class="col-md-5">
+                    <h6><i class="fas fa-cogs"></i> Quy trình Welsh-Powell: Sắp xếp đỉnh → Tô màu tuần tự → Kiểm tra xung đột</h6>
+                </div>
+                
+                <div class="col-md-3">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-number" id="totalCells">81</div>
+                            <div style="font-size: 0.8rem; opacity: 0.8;">Đỉnh</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-number" id="totalConstraints">-</div>
+                            <div style="font-size: 0.8rem; opacity: 0.8;">Cạnh</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Sudoku Grid -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <h4><i class="fas fa-th"></i> Lưới Sudoku (Graph Vertices)</h4>
+                            <div class="btn-group">
+                                <button class="btn btn-success btn-sm" onclick="generatePuzzle('easy')">
+                                    <i class="fas fa-star"></i> Dễ
+                                </button>
+                                <button class="btn btn-warning btn-sm" onclick="generatePuzzle('medium')">
+                                    <i class="fas fa-star"></i> TB
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="generatePuzzle('hard')">
+                                    <i class="fas fa-star"></i> Khó
+                                </button>
+                                <button class="btn btn-info btn-sm" onclick="toggleGraphMode()" id="graphModeBtn">
+                                    <i class="fas fa-project-diagram"></i> Graph Mode
+                                </button>
+                                <button class="btn btn-secondary btn-sm" onclick="clearGrid()">
+                                    <i class="fas fa-eraser"></i> Xóa
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card-body text-center">
+                        <div class="sudoku-container" style="overflow-x: auto;">
+                            <div class="sudoku-grid" id="sudokuGrid">
+                                <!-- Cells sẽ được tạo bằng JavaScript -->
+                            </div>
+                        </div>
+                        
+                        <!-- Color Legend -->
+                        <div class="color-legend">
+                            <div class="d-flex justify-content-center flex-wrap gap-2">
+                                <div class="color-box" style="background-color: #FFB6C1; color: black; font-weight: bold; border-radius: 50%;">1</div>
+                                <div class="color-box" style="background-color: #FF0000; color: black; font-weight: bold; border-radius: 50%;">2</div>
+                                <div class="color-box" style="background-color: #00FF00; color: black; font-weight: bold; border-radius: 50%;">3</div>
+                                <div class="color-box" style="background-color: #0000FF; color: black; font-weight: bold; border-radius: 50%;">4</div>
+                                <div class="color-box" style="background-color: #FFA500; color: black; font-weight: bold; border-radius: 50%;">5</div>
+                                <div class="color-box" style="background-color: #FFFF00; color: black; font-weight: bold; border-radius: 50%;">6</div>
+                                <div class="color-box" style="background-color: #800080; color: black; font-weight: bold; border-radius: 50%;">7</div>
+                                <div class="color-box" style="background-color: #808080; color: black; font-weight: bold; border-radius: 50%;">8</div>
+                                <div class="color-box" style="background-color: #00FFFF; color: black; font-weight: bold; border-radius: 50%;">9</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Controls and Visualization -->
+            <div class="col-lg-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h4><i class="fas fa-play-circle"></i> Điều khiển Algorithm</h4>
+                    </div>
+                    <div class="card-body">
+                        <!-- Solve Controls -->
+                        <div class="step-controls">
+                            <div class="text-center mb-3">
+                                <button class="btn btn-primary btn-step" onclick="startSolving()">
+                                    <i class="fas fa-play"></i> Bắt đầu giải
+                                </button>
+                                <button class="btn btn-secondary btn-step" onclick="nextStep()" id="nextBtn" disabled>
+                                    <i class="fas fa-step-forward"></i> Bước tiếp
+                                </button>
+                                <button class="btn btn-secondary btn-step" onclick="prevStep()" id="prevBtn" disabled>
+                                    <i class="fas fa-step-backward"></i> Bước trước
+                                </button>
+                                <button class="btn btn-success btn-step" onclick="autoSolve()" id="autoBtn" disabled>
+                                    <i class="fas fa-forward"></i> Tự động
+                                </button>
+                                <button class="btn btn-secondary btn-step" onclick="resetVisualization()" id="resetBtn" disabled>
+                                    <i class="fas fa-redo"></i> Reset
+                                </button>
+                            </div>
+                            
+                            <!-- Speed Control -->
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label for="speedSlider" class="form-label">Tốc độ: <span id="speedDisplay">10x</span></label>
+                                    <input type="range" class="form-range" id="speedSlider" min="1" max="20" value="10">
+                                    <div class="d-flex justify-content-between">
+                                        <small>1x</small>
+                                        <small>20x</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Tiến độ:</label>
+                                    <div class="progress">
+                                        <div class="progress-bar bg-primary" 
+                                             role="progressbar" 
+                                             id="progressBar" 
+                                             style="width: 0%; font-size: 12px; line-height: 30px;">
+                                             0%
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Step Information -->
+                        <div class="step-info">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <h6><i class="fas fa-info-circle"></i> Thông tin bước hiện tại:</h6>
+                                    <div class="step-description" id="stepDescription">
+                                        Chọn một puzzle và nhấn "Bắt đầu giải" để xem demo thuật toán Graph Coloring.
+                                    </div>
+                                    <div class="step-details hidden" id="stepDetails">
+                                        <!-- Chi tiết bước sẽ được hiển thị ở đây -->
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="text-center">
+                                        <h6>Bước:</h6>
+                                        <div class="display-6 text-primary" id="stepCounter">0</div>
+                                        <small id="totalSteps" class="text-muted">/ 0</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Algorithm Statistics -->
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6><i class="fas fa-undo-alt"></i> Backtrack</h6>
+                                        <div class="h4 text-warning" id="backtrackCount">0</div>
+                                        <small class="text-muted">Lần quay lui</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6><i class="fas fa-check"></i> Đã gán màu</h6>
+                                        <div class="h4 text-success" id="solvedCount">0</div>
+                                        <small class="text-muted">Ô đã điền</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <div class="card bg-light">
+                                    <div class="card-body text-center">
+                                        <h6><i class="fas fa-share-alt"></i> Propagation</h6>
+                                        <div class="h4 text-info" id="propagationCount">0</div>
+                                        <small class="text-muted">Lan truyền ràng buộc</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Algorithm Progress -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="card bg-light">
+                                    <div class="card-header bg-primary text-white">
+                                        <h6 class="mb-0"><i class="fas fa-chart-line"></i> Tiến trình Welsh-Powell</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row text-center">
+                                            <div class="col-4">
+                                                <div class="text-primary">
+                                                    <i class="fas fa-list-ol fa-2x"></i>
+                                                    <div class="mt-2"><strong>Đỉnh đã xét</strong></div>
+                                                    <div id="processedVertices" class="h5 text-success">-</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="text-info">
+                                                    <i class="fas fa-palette fa-2x"></i>
+                                                    <div class="mt-2"><strong>Màu đã dùng</strong></div>
+                                                    <div id="colorsUsed" class="h5 text-success">-</div>
+                                                </div>
+                                            </div>
+                                            <div class="col-4">
+                                                <div class="text-warning">
+                                                    <i class="fas fa-percentage fa-2x"></i>
+                                                    <div class="mt-2"><strong>Hoàn thành</strong></div>
+                                                    <div id="completionRate" class="h5 text-success">-</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay hidden" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <h5>Đang phân tích và tạo visualization...</h5>
+            <p>Thuật toán đang xây dựng đồ thị ràng buộc và tìm lời giải</p>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let currentGrid = Array(9).fill().map(() => Array(9).fill(0));
+        let solutionSteps = [];
+        let currentStepIndex = 0;
+        let isAutoSolving = false;
+        let autoSolveInterval = null;
+        let isGraphMode = false;
+        let originalGrid = null;
+        
+        // Initialize grid
+        document.addEventListener('DOMContentLoaded', function() {
+            createSudokuGrid();
+            loadGraphStats();
+            
+            // Add speed slider event listener
+            document.getElementById('speedSlider').addEventListener('input', function() {
+                const speed = this.value;
+                document.getElementById('speedDisplay').textContent = speed + 'x';
+                
+                // Update auto solve speed if currently auto solving
+                if (isAutoSolving && autoSolveInterval) {
+                    clearInterval(autoSolveInterval);
+                    restartAutoSolve();
+                }
+            });
+        });
+        
+        function createSudokuGrid() {
+            const grid = document.getElementById('sudokuGrid');
+            grid.innerHTML = '';
+            
+            for (let i = 0; i < 81; i++) {
+                const cell = document.createElement('div');
+                cell.className = 'sudoku-cell';
+                cell.id = `cell-${Math.floor(i/9)}-${i%9}`;
+                
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.maxLength = '1';
+                input.addEventListener('input', handleCellInput);
+                input.addEventListener('keydown', handleKeyDown);
+                input.addEventListener('focus', highlightRelatedCells);
+                input.addEventListener('blur', removeHighlights);
+                
+                cell.appendChild(input);
+                grid.appendChild(cell);
+            }
+        }
+        
+        function handleKeyDown(event) {
+            // Chỉ cho phép số 1-9, Backspace, Delete, Tab, Enter và các phím điều hướng
+            const allowedKeys = [
+                'Backspace', 'Delete', 'Tab', 'Enter',
+                'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'
+            ];
+            
+            const isNumber = (event.key >= '1' && event.key <= '9');
+            const isAllowedKey = allowedKeys.includes(event.key);
+            
+            if (!isNumber && !isAllowedKey) {
+                event.preventDefault();
+            }
+        }
+        
+        function handleCellInput(event) {
+            let value = event.target.value;
+            
+            // Chỉ cho phép số từ 1-9
+            if (value && (value < '1' || value > '9' || isNaN(value))) {
+                event.target.value = '';
+                value = '';
+            }
+            
+            const numValue = parseInt(value) || 0;
+            const cell = event.target.parentElement;
+            const [row, col] = cell.id.split('-').slice(1).map(Number);
+            
+            currentGrid[row][col] = numValue;
+            
+            // Validate and show conflicts
+            validateGrid();
+        }
+        
+        function highlightRelatedCells(event) {
+            const cell = event.target.parentElement;
+            const [row, col] = cell.id.split('-').slice(1).map(Number);
+            
+            // Clear previous highlights
+            removeHighlights();
+            
+            // Highlight row, column, and 3x3 box
+            for (let i = 0; i < 9; i++) {
+                // Row
+                document.getElementById(`cell-${row}-${i}`).classList.add('affected');
+                // Column
+                document.getElementById(`cell-${i}-${col}`).classList.add('affected');
+            }
+            
+            // 3x3 box
+            const boxRow = Math.floor(row / 3) * 3;
+            const boxCol = Math.floor(col / 3) * 3;
+            for (let r = boxRow; r < boxRow + 3; r++) {
+                for (let c = boxCol; c < boxCol + 3; c++) {
+                    document.getElementById(`cell-${r}-${c}`).classList.add('affected');
+                }
+            }
+            
+            // Remove highlight from current cell
+            cell.classList.remove('affected');
+        }
+        
+        function removeHighlights() {
+            document.querySelectorAll('.sudoku-cell').forEach(cell => {
+                cell.classList.remove('affected', 'possible');
+            });
+        }
+        
+        async function generatePuzzle(difficulty) {
+            showLoading(true);
+            try {
+                const response = await fetch(`/api/generate_puzzle/${difficulty}`);
+                const data = await response.json();
+                
+                currentGrid = data.puzzle;
+                displayGrid(currentGrid, data.conflicts);
+                
+                resetVisualization();
+                
+                setTimeout(() => showLoading(false), 500);
+            } catch (error) {
+                console.error('Error generating puzzle:', error);
+                showLoading(false);
+            }
+        }
+        
+        function displayGrid(grid, conflicts = []) {
+            for (let row = 0; row < 9; row++) {
+                for (let col = 0; col < 9; col++) {
+                    const cell = document.getElementById(`cell-${row}-${col}`);
+                    const input = cell.querySelector('input');
+                    
+                    // Clear all classes
+                    cell.className = 'sudoku-cell';
+                    
+                    // Set value
+                    input.value = grid[row][col] || '';
+                    
+                    // Set classes based on state and mode
+                    if (grid[row][col] !== 0) {
+                        if (isGraphMode) {
+                            // In graph mode, show numbers as colored vertices
+                            cell.classList.add(`color-${grid[row][col]}`);
+                        } else {
+                            // In normal mode, show as given numbers
+                            cell.classList.add('given');
+                        }
+                        input.readOnly = true;
+                    } else {
+                        input.readOnly = false;
+                    }
+                    
+                    // Mark conflicts
+                    if (conflicts.some(([r, c]) => r === row && c === col)) {
+                        cell.classList.add('conflict');
+                    }
+                }
+            }
+        }
+        
+        function toggleGraphMode() {
+            isGraphMode = !isGraphMode;
+            const container = document.getElementById('sudokuGrid').parentElement.parentElement;
+            const btn = document.getElementById('graphModeBtn');
+            
+            if (isGraphMode) {
+                container.classList.add('graph-mode');
+                btn.innerHTML = '<i class="fas fa-th"></i> Normal Mode';
+                btn.className = 'btn btn-outline-info btn-sm';
+                
+                // Store original grid and apply coloring
+                if (!originalGrid) {
+                    originalGrid = currentGrid.map(row => [...row]);
+                }
+                displayGrid(currentGrid);
+                
+                // Delay edge drawing to ensure layout is complete
+                setTimeout(() => {
+                    drawConstraintEdges();
+                }, 150);
+            } else {
+                container.classList.remove('graph-mode');
+                btn.innerHTML = '<i class="fas fa-project-diagram"></i> Graph Mode';
+                btn.className = 'btn btn-info btn-sm';
+                
+                // Remove edges
+                removeConstraintEdges();
+                
+                // Restore original display
+                displayGrid(currentGrid);
+            }
+        }
+        
+        function drawConstraintEdges() {
+            // Remove existing edges first
+            removeConstraintEdges();
+            
+            const gridContainer = document.getElementById('sudokuGrid');
+            
+            // Create SVG element for edges - insert directly into grid container
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.classList.add('graph-edges');
+            
+            gridContainer.appendChild(svg);
+            
+            // Wait for layout to complete then calculate positions
+            setTimeout(() => {
+                const cells = Array.from(gridContainer.children).filter(child => child.classList.contains('sudoku-cell'));
+                const cellPositions = [];
+                const svgRect = svg.getBoundingClientRect();
+                
+                for (let i = 0; i < 81; i++) {
+                    const cell = cells[i];
+                    const cellRect = cell.getBoundingClientRect();
+                    
+                    cellPositions.push({
+                        x: cellRect.left - svgRect.left + cellRect.width / 2,
+                        y: cellRect.top - svgRect.top + cellRect.height / 2
+                    });
+                }
+                
+                // Clear existing lines
+                svg.innerHTML = '';
+                
+                for (let i = 0; i < 9; i++) {
+                    for (let j = 0; j < 9; j++) {
+                        const cellIndex = i * 9 + j;
+                        const pos1 = cellPositions[cellIndex];
+                        
+                        // Draw row constraints
+                        for (let k = j + 1; k < 9; k++) {
+                            const pos2 = cellPositions[i * 9 + k];
+                            drawLine(svg, pos1.x, pos1.y, pos2.x, pos2.y);
+                        }
+                        
+                        // Draw column constraints
+                        for (let k = i + 1; k < 9; k++) {
+                            const pos2 = cellPositions[k * 9 + j];
+                            drawLine(svg, pos1.x, pos1.y, pos2.x, pos2.y);
+                        }
+                        
+                        // Draw 3x3 box constraints
+                        const boxRow = Math.floor(i / 3);
+                        const boxCol = Math.floor(j / 3);
+                        
+                        for (let bi = boxRow * 3; bi < (boxRow + 1) * 3; bi++) {
+                            for (let bj = boxCol * 3; bj < (boxCol + 1) * 3; bj++) {
+                                if (bi > i || (bi === i && bj > j)) {
+                                    // Only draw if not already drawn by row/column constraints
+                                    if (bi !== i && bj !== j) {
+                                        const pos2 = cellPositions[bi * 9 + bj];
+                                        drawLine(svg, pos1.x, pos1.y, pos2.x, pos2.y);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }, 100);
+        }
+        
+        function drawLine(svg, x1, y1, x2, y2) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', x1);
+            line.setAttribute('y1', y1);
+            line.setAttribute('x2', x2);
+            line.setAttribute('y2', y2);
+            line.classList.add('constraint-line');
+            svg.appendChild(line);
+        }
+        
+        function removeConstraintEdges() {
+            const existingEdges = document.querySelectorAll('.graph-edges');
+            existingEdges.forEach(edge => edge.remove());
+        }
+        
+        async function validateGrid() {
+            try {
+                const response = await fetch('/api/validate_input', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({grid: currentGrid})
+                });
+                
+                const data = await response.json();
+                
+                // Clear previous conflicts
+                document.querySelectorAll('.conflict').forEach(cell => {
+                    cell.classList.remove('conflict');
+                });
+                
+                // Mark new conflicts
+                data.conflicts.forEach(([row, col]) => {
+                    document.getElementById(`cell-${row}-${col}`).classList.add('conflict');
+                });
+                
+                return data.is_valid;
+            } catch (error) {
+                console.error('Error validating grid:', error);
+                return false;
+            }
+        }
+        
+        async function startSolving() {
+            // Validate input first
+            const isValid = await validateGrid();
+            if (!isValid) {
+                alert('Puzzle có conflicts! Vui lòng sửa lỗi trước khi giải.');
+                return;
+            }
+            
+            // Auto switch to graph mode when solving starts
+            if (!isGraphMode) {
+                toggleGraphMode();
+            }
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/api/solve_step_by_step', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({grid: currentGrid})
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    solutionSteps = data.steps;
+                    currentStepIndex = 0;
+                    
+                    // Enable controls and start in auto mode
+                    document.getElementById('nextBtn').disabled = false;
+                    document.getElementById('prevBtn').disabled = false;
+                    document.getElementById('autoBtn').disabled = false;
+                    document.getElementById('resetBtn').disabled = false;
+                    
+                    // Start auto solve immediately
+                    setTimeout(() => {
+                        autoSolve();
+                    }, 500);
+                    
+                    // Update UI
+                    updateStepDisplay();
+                    document.getElementById('totalSteps').textContent = `/ ${data.total_steps}`;
+                    
+                    showLoading(false);
+                } else {
+                    alert('Lỗi: ' + data.error);
+                    showLoading(false);
+                }
+            } catch (error) {
+                console.error('Error solving:', error);
+                alert('Có lỗi xảy ra khi giải puzzle');
+                showLoading(false);
+            }
+        }
+        
+        function nextStep() {
+            if (currentStepIndex < solutionSteps.length - 1) {
+                // Switch to manual mode
+                if (isAutoSolving) {
+                    stopAutoSolve();
+                }
+                switchToManualMode();
+                
+                currentStepIndex++;
+                updateStepDisplay();
+                updateProgress();
+            }
+        }
+        
+        function prevStep() {
+            if (currentStepIndex > 0) {
+                // Switch to manual mode
+                if (isAutoSolving) {
+                    stopAutoSolve();
+                }
+                switchToManualMode();
+                
+                currentStepIndex--;
+                updateStepDisplay();
+                updateProgress();
+            }
+        }
+        
+        function switchToManualMode() {
+            document.getElementById('autoBtn').className = 'btn btn-success btn-step';
+            document.getElementById('autoBtn').innerHTML = '<i class="fas fa-forward"></i> Tự động';
+            document.getElementById('nextBtn').className = 'btn btn-info btn-step';
+            document.getElementById('prevBtn').className = 'btn btn-warning btn-step';
+        }
+        
+        function switchToAutoMode() {
+            document.getElementById('autoBtn').className = 'btn btn-success btn-step';
+            document.getElementById('autoBtn').innerHTML = '<i class="fas fa-pause"></i> Dừng';
+            document.getElementById('nextBtn').className = 'btn btn-secondary btn-step';
+            document.getElementById('prevBtn').className = 'btn btn-secondary btn-step';
+        }
+        
+        function autoSolve() {
+            if (isAutoSolving) {
+                stopAutoSolve();
+                switchToManualMode();
+                return;
+            }
+            
+            isAutoSolving = true;
+            switchToAutoMode();
+            
+            const speed = parseInt(document.getElementById('speedSlider').value);
+            const delay = Math.max(50, 1000 / speed); // Convert speed to delay (1x = 1000ms, 20x = 50ms)
+            autoSolveInterval = setInterval(() => {
+                if (currentStepIndex < solutionSteps.length - 1) {
+                    currentStepIndex++;
+                    updateStepDisplay();
+                    updateProgress();
+                } else {
+                    stopAutoSolve();
+                    switchToManualMode();
+                }
+            }, delay);
+        }
+        
+        function stopAutoSolve() {
+            isAutoSolving = false;
+            if (autoSolveInterval) {
+                clearInterval(autoSolveInterval);
+                autoSolveInterval = null;
+            }
+        }
+        
+        function restartAutoSolve() {
+            if (!isAutoSolving) return;
+            
+            const speed = parseInt(document.getElementById('speedSlider').value);
+            const delay = Math.max(50, 1000 / speed);
+            
+            autoSolveInterval = setInterval(() => {
+                if (currentStepIndex < solutionSteps.length - 1) {
+                    currentStepIndex++;
+                    updateStepDisplay();
+                    updateProgress();
+                } else {
+                    stopAutoSolve();
+                    switchToManualMode();
+                }
+            }, delay);
+        }
+        
+        function resetVisualization() {
+            stopAutoSolve();
+            solutionSteps = [];
+            currentStepIndex = 0;
+            
+            // Switch back to normal mode after solving
+            if (isGraphMode) {
+                toggleGraphMode();
+            }
+            
+            // Disable controls
+            document.getElementById('nextBtn').disabled = true;
+            document.getElementById('prevBtn').disabled = true;
+            document.getElementById('autoBtn').disabled = true;
+            document.getElementById('resetBtn').disabled = true;
+            
+            // Reset UI
+            document.getElementById('stepCounter').textContent = '0';
+            document.getElementById('totalSteps').textContent = '/ 0';
+            document.getElementById('stepDescription').textContent = 'Chọn một puzzle và nhấn "Bắt đầu giải" để xem demo thuật toán Welsh-Powell.';
+            document.getElementById('stepDetails').classList.add('hidden');
+            document.getElementById('progressBar').style.width = '0%';
+            document.getElementById('progressBar').innerHTML = '0%';
+            document.getElementById('backtrackCount').textContent = '0';
+            document.getElementById('solvedCount').textContent = '0';
+            document.getElementById('propagationCount').textContent = '0';
+            document.getElementById('processedVertices').textContent = '-';
+            document.getElementById('colorsUsed').textContent = '-';
+            document.getElementById('completionRate').textContent = '-';
+            
+            // Clear grid highlights
+            removeHighlights();
+            document.querySelectorAll('.sudoku-cell').forEach(cell => {
+                cell.classList.remove('current', 'solved');
+            });
+        }
+        
+        function updateStepDisplay() {
+            if (solutionSteps.length === 0) return;
+            
+            const step = solutionSteps[currentStepIndex];
+            
+            // Update step counter
+            document.getElementById('stepCounter').textContent = currentStepIndex + 1;
+            
+            // Update step description
+            document.getElementById('stepDescription').textContent = step.description;
+            
+            // Update grid display
+            displayStepGrid(step);
+            
+            // Update navigation buttons
+            document.getElementById('prevBtn').disabled = currentStepIndex === 0;
+            document.getElementById('nextBtn').disabled = currentStepIndex === solutionSteps.length - 1;
+            
+            // Update statistics
+            updateStatistics();
+            
+            // Show step details
+            showStepDetails(step);
+        }
+        
+        function displayStepGrid(step) {
+            // Clear all highlights
+            removeHighlights();
+            document.querySelectorAll('.sudoku-cell').forEach(cell => {
+                cell.classList.remove('current', 'solved', 'conflict');
+            });
+            
+            // Display current grid state
+            displayGrid(step.grid, step.conflicts);
+            
+            // Highlight current cell
+            if (step.current_cell) {
+                const [row, col] = step.current_cell;
+                const cell = document.getElementById(`cell-${row}-${col}`);
+                cell.classList.add('current');
+            }
+            
+            // Highlight cells with possible values but don't show mini numbers
+            for (const [cellKey, possibleValues] of Object.entries(step.possible_values)) {
+                const [row, col] = cellKey.split('-').map(Number);
+                const cell = document.getElementById(`cell-${row}-${col}`);
+                
+                if (possibleValues.length > 0) {
+                    cell.classList.add('possible');
+                }
+            }
+            
+            // Highlight affected cells for propagation
+            if (step.action === 'propagate' && step.current_cell) {
+                highlightAffectedCells(step.current_cell[0], step.current_cell[1]);
+            }
+        }
+        
+        function highlightAffectedCells(row, col) {
+            // Highlight row
+            for (let c = 0; c < 9; c++) {
+                if (c !== col) {
+                    document.getElementById(`cell-${row}-${c}`).classList.add('affected');
+                }
+            }
+            
+            // Highlight column
+            for (let r = 0; r < 9; r++) {
+                if (r !== row) {
+                    document.getElementById(`cell-${r}-${col}`).classList.add('affected');
+                }
+            }
+            
+            // Highlight 3x3 box
+            const boxRow = Math.floor(row / 3) * 3;
+            const boxCol = Math.floor(col / 3) * 3;
+            for (let r = boxRow; r < boxRow + 3; r++) {
+                for (let c = boxCol; c < boxCol + 3; c++) {
+                    if (r !== row || c !== col) {
+                        document.getElementById(`cell-${r}-${c}`).classList.add('affected');
+                    }
+                }
+            }
+        }
+        
+        function showStepDetails(step) {
+            const detailsDiv = document.getElementById('stepDetails');
+            detailsDiv.classList.remove('hidden');
+            
+            let detailsHTML = '<strong>Chi tiết thuật toán Welsh-Powell:</strong><br>';
+            
+            switch (step.action) {
+                case 'initialize':
+                    detailsHTML += '🔍 <strong>Bước 1 - Khởi tạo Graph:</strong><br>';
+                    detailsHTML += '• Tạo đồ thị với 81 đỉnh (ô Sudoku)<br>';
+                    detailsHTML += '• Xây dựng ~810 cạnh ràng buộc (hàng, cột, ô 3×3)<br>';
+                    detailsHTML += '• Chuẩn bị danh sách màu khả dĩ cho mỗi đỉnh';
+                    break;
+                case 'select_cell':
+                    detailsHTML += '📍 <strong>Bước 2 - Chọn đỉnh:</strong><br>';
+                    detailsHTML += '• Welsh-Powell: Sắp xếp các đỉnh theo thứ tự ưu tiên<br>';
+                    detailsHTML += '• Chọn đỉnh tiếp theo trong danh sách đã sắp xếp<br>';
+                    detailsHTML += '• Xác định các màu có thể sử dụng cho đỉnh này';
+                    break;
+                case 'try_value':
+                    detailsHTML += '🎯 <strong>Bước 3 - Tô màu:</strong><br>';
+                    detailsHTML += '• Chọn màu đầu tiên trong danh sách màu khả dĩ<br>';
+                    detailsHTML += '• Kiểm tra xung đột với các đỉnh kề<br>';
+                    detailsHTML += '• Gán màu nếu không có xung đột';
+                    break;
+                case 'propagate':
+                    detailsHTML += '🔄 <strong>Bước 4 - Cập nhật ràng buộc:</strong><br>';
+                    detailsHTML += '• Sau khi gán màu cho đỉnh: cập nhật trạng thái đồ thị<br>';
+                    detailsHTML += '• Loại bỏ màu vừa sử dụng khỏi danh sách của các đỉnh kề<br>';
+                    detailsHTML += '• Chuẩn bị cho việc tô màu đỉnh tiếp theo';
+                    break;
+                case 'backtrack':
+                    detailsHTML += '⬅️ <strong>Xử lý ngõ cụt:</strong><br>';
+                    detailsHTML += '• Phát hiện không thể tô màu cho đỉnh hiện tại<br>';
+                    detailsHTML += '• Quay lại bước trước và thử màu khác<br>';
+                    detailsHTML += '• Tiếp tục cho đến khi tìm được giải pháp';
+                    break;
+                case 'complete':
+                    detailsHTML += '🎉 <strong>Hoàn thành:</strong><br>';
+                    detailsHTML += '• Tất cả 81 đỉnh đã được tô màu thành công<br>';
+                    detailsHTML += '• Sử dụng tối đa 9 màu (số từ 1-9)<br>';
+                    detailsHTML += '• Thỏa mãn tất cả ràng buộc của bài toán Sudoku';
+                    break;
+                default:
+                    detailsHTML += step.description;
+            }
+            
+            if (Object.keys(step.possible_values).length > 0) {
+                detailsHTML += '<br><br><strong>Màu khả dĩ hiện tại:</strong><br>';
+                let domainCount = 0;
+                for (const [cellKey, values] of Object.entries(step.possible_values)) {
+                    const [row, col] = cellKey.split('-').map(Number);
+                    if (values.length > 0) {
+                        detailsHTML += `• Đỉnh (${row+1},${col+1}): {${values.join(', ')}} (${values.length} màu)<br>`;
+                        domainCount++;
+                    }
+                }
+                if (domainCount > 0) {
+                    detailsHTML += `<em>→ Còn ${domainCount} đỉnh chưa được tô màu</em>`;
+                }
+            }
+            
+            detailsDiv.innerHTML = detailsHTML;
+        }
+        
+        function updateProgress() {
+            if (solutionSteps.length === 0) return;
+            
+            const progress = ((currentStepIndex + 1) / solutionSteps.length) * 100;
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = `${progress}%`;
+            progressBar.innerHTML = `${Math.round(progress)}%`;
+        }
+        
+        function updateStatistics() {
+            let backtrackCount = 0;
+            let solvedCount = 0;
+            let propagationCount = 0;
+            let processedVertices = 0;
+            
+            for (let i = 0; i <= currentStepIndex; i++) {
+                const step = solutionSteps[i];
+                if (step.action === 'backtrack') backtrackCount++;
+                if (step.action === 'try_value') solvedCount++;
+                if (step.action === 'propagate') propagationCount++;
+                if (step.action === 'select_cell') processedVertices++;
+            }
+            
+            document.getElementById('backtrackCount').textContent = backtrackCount;
+            document.getElementById('solvedCount').textContent = solvedCount;
+            document.getElementById('propagationCount').textContent = propagationCount;
+            
+            // Calculate Welsh-Powell progress
+            document.getElementById('processedVertices').textContent = processedVertices;
+            
+            // Count colors used (unique numbers in current grid)
+            const currentStep = solutionSteps[currentStepIndex];
+            if (currentStep && currentStep.grid) {
+                const colorsUsed = new Set();
+                for (let row = 0; row < 9; row++) {
+                    for (let col = 0; col < 9; col++) {
+                        if (currentStep.grid[row][col] !== 0) {
+                            colorsUsed.add(currentStep.grid[row][col]);
+                        }
+                    }
+                }
+                document.getElementById('colorsUsed').textContent = colorsUsed.size;
+                
+                // Calculate completion rate
+                const totalFilled = Array.from(currentStep.grid).flat().filter(cell => cell !== 0).length;
+                const completionRate = Math.round((totalFilled / 81) * 100);
+                document.getElementById('completionRate').textContent = `${completionRate}%`;
+            } else {
+                document.getElementById('colorsUsed').textContent = '-';
+                document.getElementById('completionRate').textContent = '-';
+            }
+        }
+        
+        async function loadGraphStats() {
+            try {
+                const response = await fetch('/api/get_graph_info');
+                const data = await response.json();
+                document.getElementById('totalConstraints').textContent = data.total_constraints;
+            } catch (error) {
+                console.error('Error loading graph stats:', error);
+            }
+        }
+        
+        function clearGrid() {
+            currentGrid = Array(9).fill().map(() => Array(9).fill(0));
+            originalGrid = null;
+            
+            // Switch back to normal mode
+            if (isGraphMode) {
+                toggleGraphMode();
+            }
+            
+            displayGrid(currentGrid);
+            resetVisualization();
+        }
+        
+        function showLoading(show) {
+            const overlay = document.getElementById('loadingOverlay');
+            if (show) {
+                overlay.classList.remove('hidden');
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(event) {
+            if (event.target.tagName !== 'INPUT') {
+                switch(event.key) {
+                    case 'ArrowRight':
+                        nextStep();
+                        break;
+                    case 'ArrowLeft':
+                        prevStep();
+                        break;
+                    case ' ':
+                        event.preventDefault();
+                        if (isAutoSolving) {
+                            stopAutoSolve();
+                        } else {
+                            autoSolve();
+                        }
+                        break;
+                }
+            }
+        });
+    </script>
+</body>
+</html>
