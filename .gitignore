@@ -50,3 +50,14 @@ instance/
 
 # Logs
 *.log
+
+# AI Development Tools
+CLAUDE.md
+.claude/
+.serena/
+.cursor/
+.continue/
+.anthropic/
+
+# AI generated backups
+*.md.backup
